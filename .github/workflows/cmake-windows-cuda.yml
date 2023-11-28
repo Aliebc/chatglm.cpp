@@ -30,7 +30,7 @@ jobs:
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
-            system_cmake_args: -DGGML_CUBLAS=OFF
+            system_cmake_args: -DGGML_CUBLAS=OFF -DCHATGLM_CN=TRUE
         exclude:
           - os: windows-latest
             c_compiler: gcc
