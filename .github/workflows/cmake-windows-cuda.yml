@@ -71,7 +71,7 @@ jobs:
     - uses: actions/upload-artifact@v3
       with:
         name: ChatGLM-CN-Windows-CUDA
-        path: ${{github.workspace}}/build/bin/ChatGLM-CN.exe
+        path: ${{github.workspace}}/build/
         
     
     
