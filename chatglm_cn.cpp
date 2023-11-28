@@ -1,12 +1,12 @@
 #include "chatglm.h"
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <fstream>
-#include <string>
+#include <thread>
 
 #include <cstring>
 #include <cstdio>
-#include <thread>
 
 #ifdef _WIN32
 #include <codecvt>
@@ -29,9 +29,11 @@ static inline InferenceMode to_inference_mode(const std::string &s) {
 struct Args {
     std::string model_path = "chatglm-ggml.bin";
     InferenceMode mode = INFERENCE_MODE_CHAT;
+    bool sync = false;
     std::string prompt = "你好";
-    std::string file = "";
+    std::string system = "";
     int max_length = 2048;
+    int max_new_tokens = -1;
     int max_context_length = 512;
     bool interactive = false;
     int top_k = 0;
@@ -49,11 +51,15 @@ static void usage(const std::string &prog) {
               << "options:\n"
               << "  -h, --help              show this help message and exit\n"
               << "  -m, --model PATH        model path (default: chatglm-ggml.bin)\n"
-              << "  --mode                  inference mode chose from {chat, generate} (default: chat)\n"
+              << "  --mode                  inference mode chosen from {chat, generate} (default: chat)\n"
+              << "  --sync                  synchronized generation without streaming\n"
               << "  -p, --prompt PROMPT     prompt to start generation with (default: 你好)\n"
-              << "  -f, --file PATH         prompt with input file (default: none)\n"
+              << "  --pp, --prompt_path     path to the plain text file that stores the prompt\n"
+              << "  -s, --system SYSTEM     system message to set the behavior of the assistant\n"
+              << "  --sp, --system_path     path to the plain text file that stores the system message\n"
               << "  -i, --interactive       run in interactive mode\n"
               << "  -l, --max_length N      max total length including prompt and output (default: 2048)\n"
+              << "  --max_new_tokens N      max number of tokens to generate, ignoring the number of prompt tokens\n"
               << "  -c, --max_context_length N\n"
               << "                          max context length (default: 512)\n"
               << "  --top_k N               top-k sampling (default: 0)\n"
@@ -64,44 +70,60 @@ static void usage(const std::string &prog) {
               << "  -v, --verbose           display verbose output including config/system/performance info\n";
 }
 
+static std::string read_text(std::string path) {
+    std::ifstream fin(path);
+    CHATGLM_CHECK(fin) << "cannot open file " << path;
+    std::ostringstream oss;
+    oss << fin.rdbuf();
+    return oss.str();
+}
+
 static Args parse_args(const std::vector<std::string> &argv) {
     Args args;
 
     for (size_t i = 1; i < argv.size(); i++) {
-        const std::string &arg = argv[i];
+        const std::string &arg = argv.at(i);
 
         if (arg == "-h" || arg == "--help") {
-            usage(argv[0]);
+            usage(argv.at(0));
             exit(EXIT_SUCCESS);
         } else if (arg == "-m" || arg == "--model") {
-            args.model_path = argv[++i];
+            args.model_path = argv.at(++i);
         } else if (arg == "--mode") {
-            args.mode = to_inference_mode(argv[++i]);
+            args.mode = to_inference_mode(argv.at(++i));
+        } else if (arg == "--sync") {
+            args.sync = true;
         } else if (arg == "-p" || arg == "--prompt") {
-            args.prompt = argv[++i];
-        }else if (arg == "-f" || arg == "--file"){
-            args.file = argv[++i];
+            args.prompt = argv.at(++i);
+        } else if (arg == "--pp" || arg == "--prompt_path") {
+            args.prompt = read_text(argv.at(++i));
+        } else if (arg == "-s" || arg == "--system") {
+            args.system = argv.at(++i);
+        } else if (arg == "--sp" || arg == "--system_path") {
+            args.system = read_text(argv.at(++i));
         } else if (arg == "-i" || arg == "--interactive") {
             args.interactive = true;
         } else if (arg == "-l" || arg == "--max_length") {
-            args.max_length = std::stoi(argv[++i]);
+            args.max_length = std::stoi(argv.at(++i));
+        } else if (arg == "--max_new_tokens") {
+            args.max_new_tokens = std::stoi(argv.at(++i));
         } else if (arg == "-c" || arg == "--max_context_length") {
-            args.max_context_length = std::stoi(argv[++i]);
+            args.max_context_length = std::stoi(argv.at(++i));
         } else if (arg == "--top_k") {
-            args.top_k = std::stoi(argv[++i]);
+            args.top_k = std::stoi(argv.at(++i));
         } else if (arg == "--top_p") {
-            args.top_p = std::stof(argv[++i]);
+            args.top_p = std::stof(argv.at(++i));
         } else if (arg == "--temp") {
-            args.temp = std::stof(argv[++i]);
+            args.temp = std::stof(argv.at(++i));
         } else if (arg == "--repeat_penalty") {
-            args.repeat_penalty = std::stof(argv[++i]);
+            args.repeat_penalty = std::stof(argv.at(++i));
         } else if (arg == "-t" || arg == "--threads") {
-            args.num_threads = std::stoi(argv[++i]);
+            args.num_threads = std::stoi(argv.at(++i));
         } else if (arg == "-v" || arg == "--verbose") {
             args.verbose = true;
         } else {
             std::cerr << "Unknown argument: " << arg << std::endl;
-            usage(argv[0]);
+            usage(argv.at(0));
             exit(EXIT_FAILURE);
         }
     }
@@ -132,7 +154,6 @@ static Args parse_args(int argc, char **argv) {
     return parse_args(argv_vec);
 }
 
-
 static bool gbk_to_utf8(std::string & line){
 #ifdef _WIN32
     int len = MultiByteToWideChar(CP_ACP, 0, line.c_str(), -1, NULL, 0);
@@ -153,18 +174,16 @@ static bool gbk_to_utf8(std::string & line){
 }
 
 static bool get_utf8_line(std::string &line) {
-/*#ifdef _WIN32
-    std::wstring wline;
-    bool ret = !!std::getline(std::wcin, wline);
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    line = converter.to_bytes(wline);
-    return ret;
-#else
-    return !!std::getline(std::cin, line);
-#endif*/
 bool k = !!std::getline(std::cin, line);
 gbk_to_utf8(line);
 return k;
+}
+
+static inline void print_message(const chatglm::ChatMessage &message) {
+    std::cout << message.content << "\n";
+    if (!message.tool_calls.empty() && message.tool_calls.front().type == chatglm::ToolCallMessage::TYPE_CODE) {
+        std::cout << message.tool_calls.front().code.input << "\n";
+    }
 }
 
 static void chat(Args &args) {
@@ -177,11 +196,14 @@ static void chat(Args &args) {
 
     auto text_streamer = std::make_shared<chatglm::TextStreamer>(std::cout, pipeline.tokenizer.get());
     auto perf_streamer = std::make_shared<chatglm::PerfStreamer>();
-    auto streamer = std::make_shared<chatglm::StreamerGroup>(
-        std::vector<std::shared_ptr<chatglm::BaseStreamer>>{text_streamer, perf_streamer});
+    std::vector<std::shared_ptr<chatglm::BaseStreamer>> streamers{perf_streamer};
+    if (!args.sync) {
+        streamers.emplace_back(text_streamer);
+    }
+    auto streamer = std::make_unique<chatglm::StreamerGroup>(std::move(streamers));
 
-    chatglm::GenerationConfig gen_config(args.max_length, args.max_context_length, args.temp > 0, args.top_k,
-                                         args.top_p, args.temp, args.repeat_penalty, args.num_threads);
+    chatglm::GenerationConfig gen_config(args.max_length, args.max_new_tokens, args.max_context_length, args.temp > 0,
+                                         args.top_k, args.top_p, args.temp, args.repeat_penalty, args.num_threads);
 
     if (args.verbose) {
         std::cout << "system info: | "
@@ -206,6 +228,7 @@ static void chat(Args &args) {
                   << "top_k = " << args.top_k << " | "
                   << "top_p = " << args.top_p << " | "
                   << "temperature = " << args.temp << " | "
+                  << "repetition_penalty = " << args.repeat_penalty << " | "
                   << "num_threads = " << args.num_threads << " |\n";
 
         std::cout << "loaded " << pipeline.model->config.model_type_name() << " model from " << args.model_path
@@ -217,6 +240,11 @@ static void chat(Args &args) {
     if (args.mode != INFERENCE_MODE_CHAT && args.interactive) {
         std::cerr << "interactive demo is only supported for chat mode, falling back to non-interactive one\n";
         args.interactive = false;
+    }
+
+    std::vector<chatglm::ChatMessage> system_messages;
+    if (!args.system.empty()) {
+        system_messages.emplace_back(chatglm::ChatMessage::ROLE_SYSTEM, args.system);
     }
 
     if (args.interactive) {
@@ -233,10 +261,33 @@ static void chat(Args &args) {
             << "This version of ChatGLM.cpp is compiled by Y.X.\n"
             << "\n";
 
-        std::vector<std::string> history;
+        std::vector<chatglm::ChatMessage> messages = system_messages;
+        if (!args.system.empty()) {
+            std::cout << std::setw(model_name.size()) << std::left << "System"
+                      << " > " << args.system << std::endl;
+        }
         while (1) {
-            std::cout << std::setw(model_name.size()) << std::left << "用户"
-                      << " > " << std::flush;
+            std::string role;
+            if (!messages.empty() && !messages.back().tool_calls.empty()) {
+                const auto &tool_call = messages.back().tool_calls.front();
+                if (tool_call.type == chatglm::ToolCallMessage::TYPE_FUNCTION) {
+                    // function call
+                    std::cout << "Function Call > Please manually call function `" << tool_call.function.name
+                              << "` with args `" << tool_call.function.arguments << "` and provide the results below.\n"
+                              << "Observation   > " << std::flush;
+                } else if (tool_call.type == chatglm::ToolCallMessage::TYPE_CODE) {
+                    // code interpreter
+                    std::cout << "Code Interpreter > Please manually run the code and provide the results below.\n"
+                              << "Observation      > " << std::flush;
+                } else {
+                    CHATGLM_THROW << "unexpected tool type " << tool_call.type;
+                }
+                role = chatglm::ChatMessage::ROLE_OBSERVATION;
+            } else {
+                std::cout << std::setw(model_name.size()) << std::left << "用户"
+                          << " > " << std::flush;
+                role = chatglm::ChatMessage::ROLE_USER;
+            }
             std::string prompt;
             if (!get_utf8_line(prompt) || prompt == "stop") {
                 std::cerr << "正在停止中..." << std::endl;
@@ -246,39 +297,35 @@ static void chat(Args &args) {
                 continue;
             }
             if (prompt == "clear") {
-                history.clear();
+                messages = system_messages;
                 continue;
             }
-            history.emplace_back(std::move(prompt));
+            messages.emplace_back(std::move(role), std::move(prompt));
             std::cout << model_name << " > ";
-            std::string output = pipeline.chat(history, gen_config, streamer.get());
-            history.emplace_back(std::move(output));
+            chatglm::ChatMessage output = pipeline.chat(messages, gen_config, streamer.get());
+            if (args.sync) {
+                print_message(output);
+            }
+            messages.emplace_back(std::move(output));
             if (args.verbose) {
                 std::cout << "\n" << perf_streamer->to_string() << "\n\n";
             }
             perf_streamer->reset();
         }
-        std::cout << "再见\n";
+        std::cout << "Bye\n";
     } else {
         if (args.mode == INFERENCE_MODE_CHAT) {
-            if (args.file != "") {
-                std::ifstream infile(args.file, std::ios::in);
-                if (!infile) {
-                    std::cerr << "Invaild argument: cannot open file: " << args.file << std::endl;
-                    exit(EXIT_FAILURE);
-                }
-                std::string line;
-                std::string content;
-                // 读入文件全部内容
-                while (getline(infile, line)) {
-                    content += line;
-                }
-                infile.close();
-                args.prompt += content;
+            std::vector<chatglm::ChatMessage> messages = system_messages;
+            messages.emplace_back(chatglm::ChatMessage::ROLE_USER, args.prompt);
+            chatglm::ChatMessage output = pipeline.chat(messages, gen_config, streamer.get());
+            if (args.sync) {
+                print_message(output);
             }
-            pipeline.chat({args.prompt}, gen_config, streamer.get());
         } else {
-            pipeline.generate(args.prompt, gen_config, streamer.get());
+            std::string output = pipeline.generate(args.prompt, gen_config, streamer.get());
+            if (args.sync) {
+                std::cout << output << "\n";
+            }
         }
         if (args.verbose) {
             std::cout << "\n" << perf_streamer->to_string() << "\n\n";
@@ -292,6 +339,7 @@ int main(int argc, char **argv) {
     SetWindowText(GetConsoleWindow(), "ChatGLM-CN");
     //_setmode(_fileno(stdin), _O_WTEXT);
 #endif
+
     try {
         Args args = parse_args(argc, argv);
         if(argc == 1){
@@ -299,6 +347,7 @@ int main(int argc, char **argv) {
             args.model_path = "chatglm-ggml.bin";
             args.num_threads = std::thread::hardware_concurrency();
         }
+        chat(args);
         chat(args);
     } catch (std::exception &e) {
         std::cerr << e.what() << std::endl;
