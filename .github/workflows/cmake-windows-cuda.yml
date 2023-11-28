@@ -30,16 +30,17 @@ jobs:
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
-            system_cmake_args: -DGGML_CUBLAS=OFF -DCHATGLM_CN=TRUE
+            system_cmake_args: -DGGML_CUBLAS=ON -DCHATGLM_CN=TRUE
         exclude:
           - os: windows-latest
             c_compiler: gcc
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: Jimver/cuda-toolkit@v0.2.11
       id: cuda-toolkit
       with:
           submodules: true
+          cuda: '12.1.0'
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
