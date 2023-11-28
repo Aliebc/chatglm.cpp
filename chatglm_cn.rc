@@ -1,0 +1,52 @@
+// ChatGLM-CN.rc
+// 资源文件为 ChatGLM-CN 软件
+
+#include <windows.h>
+
+// 定义版本信息
+#define FILE_VERSION 0,2,10,0
+#define PRODUCT_VERSION 0,2,10,0
+#define FILE_VERSION_STR "0.2.10\0"
+#define PRODUCT_VERSION_STR "0.2.10\0"
+#define COMPANY_NAME "Y.X.\0"
+#define FILE_DESCRIPTION "ChatGLM-CN\0"
+#define INTERNAL_NAME "ChatGLM-CN\0"
+#define ORIGINAL_FILENAME "ChatGLM-CN.exe\0"
+#define PRODUCT_NAME "ChatGLM-CN\0"
+
+// 定义图标
+IDI_ICON1               ICON    "chatglm.ico"
+
+// 版本信息块
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION FILE_VERSION
+ PRODUCTVERSION PRODUCT_VERSION
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName", COMPANY_NAME
+            VALUE "FileDescription", FILE_DESCRIPTION
+            VALUE "FileVersion", FILE_VERSION_STR
+            VALUE "InternalName", INTERNAL_NAME
+            VALUE "OriginalFilename", ORIGINAL_FILENAME
+            VALUE "ProductName", PRODUCT_NAME
+            VALUE "ProductVersion", PRODUCT_VERSION_STR
+        END
+    END
+
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END

@@ -50,6 +50,11 @@ target_link_libraries(chatglm PUBLIC ggml sentencepiece-static)
 add_executable(main main.cpp)
 target_link_libraries(main PRIVATE chatglm)
 
+if(CHATGLM_CN)
+    add_executable(ChatGLM-CN chatglm_cn.cpp chatglm_cn.rc)
+    target_link_libraries(ChatGLM-CN PRIVATE chatglm)
+endif()
+
 # GoogleTest
 option(CHATGLM_ENABLE_TESTING "chatglm: enable testing" OFF)
 if (CHATGLM_ENABLE_TESTING)
@@ -92,19 +97,7 @@ file(GLOB PY_SOURCES
 add_custom_target(lint
     COMMAND clang-format -i ${CPP_SOURCES}
     COMMAND isort ${PY_SOURCES}
-    COMMAND black ${PY_SOURCES} --verbose)
-
-# mypy
-add_custom_target(mypy
-    mypy chatglm_cpp examples --exclude __init__.pyi
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-)
-
-# stub
-add_custom_target(stub
-    pybind11-stubgen chatglm_cpp -o .
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-)
+    COMMAND black ${PY_SOURCES} --line-length 120)
 
 if (MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
