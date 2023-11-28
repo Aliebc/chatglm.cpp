@@ -64,7 +64,7 @@ jobs:
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      run: cmake --build ${{github.workspace}}/build --config ${{ matrix.build_type }} -j
+      run: cmake --build ${{github.workspace}}/build --config ${{ matrix.build_type }} -j --target package
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
@@ -74,8 +74,8 @@ jobs:
 
     - uses: actions/upload-artifact@v3
       with:
-        name: ChatGLM-CN-Windows-CUDA
-        path: ${{github.workspace}}/build/
+        name: ChatGLM-CN-Windows-CUDA12
+        path: ${{github.workspace}}/build/ChatGLM-CN-*.zip
         
     
     

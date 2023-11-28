@@ -20,8 +20,8 @@ add_subdirectory(third_party/ggml)
 
 set(SPM_ENABLE_SHARED OFF CACHE BOOL "chatglm: disable sentencepiece shared libraries by default")
 set(SPM_ENABLE_TCMALLOC OFF CACHE BOOL "chatglm: disable tcmalloc by default")
-include_directories(third_party/sentencepiece/src)
-add_subdirectory(third_party/sentencepiece)
+include_directories(third_party/sentencepiece/src EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/sentencepiece EXCLUDE_FROM_ALL)
 
 if (GGML_CUBLAS)
     add_compile_definitions(GGML_USE_CUBLAS)
@@ -53,7 +53,17 @@ target_link_libraries(main PRIVATE chatglm)
 if(CHATGLM_CN)
     add_executable(ChatGLM-CN chatglm_cn.cpp chatglm_cn.rc)
     target_link_libraries(ChatGLM-CN PRIVATE chatglm)
+    install(TARGETS ChatGLM-CN RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
+
+set(CPACK_PACKAGE_NAME ChatGLM-CN)
+set(CPACK_PACKAGE_VENDOR "ChatGLM")
+set(CPACK_GENERATOR "ZIP")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+include(CPack)
 
 # GoogleTest
 option(CHATGLM_ENABLE_TESTING "chatglm: enable testing" OFF)
