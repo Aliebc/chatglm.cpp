@@ -1,6 +1,6 @@
 # This starter workflow is for a CMake project running on multiple platforms. There is a different starter workflow if you just want a single platform.
 # See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-single-platform.yml
-name: CMake on multiple platforms
+name: Build on Windows with CUDA
 
 on:
   push:
@@ -30,16 +30,15 @@ jobs:
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
-            system_cmake_args: -DGGML_CUBLAS=ON
+            system_cmake_args: -DGGML_CUBLAS=OFF
         exclude:
           - os: windows-latest
             c_compiler: gcc
 
     steps:
-    - uses: Jimver/cuda-toolkit@v0.2.11
+    - uses: actions/checkout@v3
       id: cuda-toolkit
       with:
-          cuda: '12.1.0'
           submodules: true
 
     - name: Set reusable strings
@@ -53,19 +52,26 @@ jobs:
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       run: >
-        cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        cmake -B ${{github.workspace}}/build
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         ${{ matrix.system_cmake_args }}
-        -S ${{ github.workspace }}
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+      run: cmake --build ${{github.workspace}}/build --config ${{ matrix.build_type }} -j
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest --build-config ${{ matrix.build_type }}
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: ChatGLM-CN-Windows-CUDA
+        path: ${{github.workspace}}/build/bin/ChatGLM-CN.exe
+        
+    
+    
