@@ -48,13 +48,15 @@ add_library(chatglm STATIC chatglm.cpp)
 target_link_libraries(chatglm PUBLIC ggml sentencepiece-static)
 
 add_executable(main main.cpp)
-target_link_libraries(main PRIVATE chatglm)
+target_link_libraries(main PUBLIC chatglm)
 
 if(CHATGLM_CN)
     add_executable(ChatGLM-CN chatglm_cn.cpp chatglm_cn.rc)
-    target_link_libraries(ChatGLM-CN PRIVATE chatglm)
+    target_link_libraries(ChatGLM-CN PUBLIC chatglm)
     install(TARGETS ChatGLM-CN RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
+
+install(TARGETS ggml LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 set(CPACK_PACKAGE_NAME ChatGLM-CN)
 set(CPACK_PACKAGE_VENDOR "ChatGLM")
